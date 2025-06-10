@@ -1,0 +1,24 @@
+{
+  "common": {
+    "buttons": {
+      "submit": "Soumettre",
+      "cancel": "Annuler",
+      "save": "Sauvegarder"
+    },
+    "labels": {
+      "name": "Nom",
+      "email": "E-mail",
+      "password": "Mot de passe"
+    },
+    "messages": {
+      "success": "Opération terminée avec succès",
+      "error": "Une erreur est survenue",
+      "loading": "Chargement..."
+    }
+  },
+  "navigation": {
+    "home": "Accueil",
+    "about": "À propos",
+    "contact": "Contact"
+  }
+}

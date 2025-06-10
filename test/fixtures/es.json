@@ -1,0 +1,45 @@
+{
+  "common": {
+    "buttons": {
+      "submit": "Enviar",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "delete": "Eliminar",
+      "edit": "Editar"
+    },
+    "labels": {
+      "name": "Nombre",
+      "email": "Correo electrónico",
+      "password": "Contraseña",
+      "confirmPassword": "Confirmar contraseña"
+    },
+    "messages": {
+      "success": "Operación completada exitosamente",
+      "error": "Ocurrió un error",
+      "loading": "Cargando...",
+      "noData": "No hay datos disponibles"
+    }
+  },
+  "navigation": {
+    "home": "Inicio",
+    "about": "Acerca de",
+    "contact": "Contacto",
+    "services": "Servicios",
+    "blog": "Blog"
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sesión",
+      "subtitle": "¡Bienvenido de vuelta! Por favor inicia sesión en tu cuenta.",
+      "forgotPassword": "¿Olvidaste tu contraseña?",
+      "noAccount": "¿No tienes una cuenta?",
+      "signUp": "Regístrate aquí"
+    },
+    "register": {
+      "title": "Crear cuenta",
+      "subtitle": "¡Únete a nosotros hoy! Crea tu nueva cuenta.",
+      "hasAccount": "¿Ya tienes una cuenta?",
+      "signIn": "Inicia sesión aquí"
+    }
+  }
+}
