@@ -26,7 +26,7 @@
     "typescript"
   ],
   "author": "Mohamed-Ali Masmoudi",
-  "url": "https://github.com/dalisys",
+  "url": "https://github.com/dalisys/i18n-mcp",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
