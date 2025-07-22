@@ -28,12 +28,12 @@ function formatTranslationsCompact(translations: any): any {
 /**
  * Setup the search translation tool
  */
-export function setupSearchTranslationTool(server: any, index: TranslationIndex, config: any, refreshFromFiles?: () => Promise<void>) {
+export function setupSearchTranslationTool(server: any, index: TranslationIndex, _config: any, refreshFromFiles?: () => Promise<void>) {
   server.tool(
     'search_translation',
-    'Search for translations by content or key patterns. IMPORTANT: Use single terms (e.g., "clients") not multiple words (e.g., "clients profile payment"). For multiple terms, use array format or separate searches.',
+    'Search for translations by content or key patterns. Use string for single search or array of strings for multiple searches.',
     {
-      query: z.union([z.string(), z.array(z.string())]).describe('Search query - single term as string (e.g., "clients") OR array for multiple searches (e.g., ["clients", "profile", "payment"])'),
+      query: z.union([z.string(), z.array(z.string())]).describe('Search query - string for single search OR array of strings for multiple searches'),
       scope: z.enum(['keys', 'values', 'both']).default('both').describe('Search scope'),
       maxResults: z.number().min(1).max(50).default(10).describe('Maximum results per query (reduced default to save context)'),
       caseSensitive: z.boolean().default(false).describe('Case sensitive search'),
@@ -54,16 +54,34 @@ export function setupSearchTranslationTool(server: any, index: TranslationIndex,
           await refreshFromFiles();
         }
         
-        // Detect and handle multi-word queries
+        // Detect and handle different query formats
         let queries: string[];
         let isMultiWordDetected = false;
+        let parsedFromString = false;
         
         if (Array.isArray(query)) {
           queries = query;
-        } else if (typeof query === 'string' && query.includes(' ') && query.split(' ').length > 2) {
-          // Auto-split multi-word queries
-          queries = query.split(' ').filter(term => term.trim().length > 0);
-          isMultiWordDetected = true;
+        } else if (typeof query === 'string') {
+          // Try to parse stringified array (e.g., '["item1", "item2"]')
+          if (query.trim().startsWith('[') && query.trim().endsWith(']')) {
+            try {
+              const parsed = JSON.parse(query);
+              if (Array.isArray(parsed)) {
+                queries = parsed;
+                parsedFromString = true;
+              } else {
+                queries = [query];
+              }
+            } catch {
+              queries = [query];
+            }
+          } else if (query.includes(' ') && query.split(' ').length > 2) {
+            // Auto-split multi-word queries
+            queries = query.split(' ').filter(term => term.trim().length > 0);
+            isMultiWordDetected = true;
+          } else {
+            queries = [query];
+          }
         } else {
           queries = [query];
         }
@@ -92,7 +110,7 @@ export function setupSearchTranslationTool(server: any, index: TranslationIndex,
         }
 
         // Single query response
-        if (!Array.isArray(query) && !isMultiWordDetected) {
+        if (!Array.isArray(query) && !isMultiWordDetected && !parsedFromString) {
           const singleResponse: any = {
             query,
             scope,
@@ -147,7 +165,9 @@ export function setupSearchTranslationTool(server: any, index: TranslationIndex,
           response.moreResults = allResults.length - 20;
         }
 
-        if (isMultiWordDetected) {
+        if (parsedFromString) {
+          response.info = `Successfully parsed stringified array with ${queries.length} search terms.`;
+        } else if (isMultiWordDetected) {
           response.warning = `Multi-word query "${query}" was automatically split into individual terms. For better results, use array format: ["${queries.join('", "')}"] or search for single terms.`;
           response.suggestion = allResults.length === 0 
             ? 'Try using explore_translation_structure to understand the key hierarchy first.'
