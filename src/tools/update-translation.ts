@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { TranslationIndex } from '../core/translation-index.js';
+import { validateFileConflicts } from '../utils/file-validation.js';
 
 /**
  * Setup the update translation tool
@@ -17,6 +18,7 @@ export function setupUpdateTranslationTool(server: any, index: TranslationIndex,
       translations: z.record(z.string(), z.string()).optional().describe('Translations by language code'),
       validateStructure: z.boolean().default(true).describe('Validate structure consistency'),
       createIfMissing: z.boolean().default(false).describe('Create key if it does not exist'),
+      conflictResolution: z.enum(['error', 'merge', 'replace']).default('replace').describe('How to handle existing keys (default: replace for updates)'),
       batchOperations: z.array(z.object({
         keyPath: z.string(),
         translations: z.record(z.string(), z.string()),
@@ -28,6 +30,7 @@ export function setupUpdateTranslationTool(server: any, index: TranslationIndex,
       translations,
       validateStructure,
       createIfMissing,
+      conflictResolution,
       batchOperations
     }: any) => {
       try {
@@ -52,7 +55,9 @@ export function setupUpdateTranslationTool(server: any, index: TranslationIndex,
             operations: batchOperations,
             validateStructure,
             createIfMissing,
-            index
+            conflictResolution,
+            index,
+            config
           });
         }
 
@@ -61,7 +66,9 @@ export function setupUpdateTranslationTool(server: any, index: TranslationIndex,
           translations,
           validateStructure,
           createIfMissing,
-          index
+          conflictResolution,
+          index,
+          config
         });
       } catch (error) {
         return {
@@ -81,7 +88,7 @@ export function setupUpdateTranslationTool(server: any, index: TranslationIndex,
 /**
  * Handle update operation
  */
-async function handleUpdateOperation({ keyPath, translations, validateStructure, createIfMissing, index }: any) {
+async function handleUpdateOperation({ keyPath, translations, validateStructure, createIfMissing, conflictResolution, index, config }: any) {
   // Check if key exists
   if (!index.has(keyPath)) {
     if (!createIfMissing) {
@@ -111,6 +118,30 @@ async function handleUpdateOperation({ keyPath, translations, validateStructure,
           }, null, 2)
         }]
       };
+    }
+  }
+
+  // Validate file conflicts before updating (if auto-sync is enabled)
+  if (config.autoSync) {
+    try {
+      const conflicts = await validateFileConflicts([keyPath], config, index, conflictResolution);
+      if (conflicts.length > 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              operation: 'update',
+              success: false,
+              error: 'File structure conflicts detected',
+              conflicts: conflicts,
+              keyPath: keyPath,
+              message: 'The translation key would conflict with existing file structure. Please resolve these conflicts first.'
+            }, null, 2)
+          }]
+        };
+      }
+    } catch (validationError) {
+      console.error('File conflict validation failed:', validationError);
     }
   }
 
@@ -153,7 +184,34 @@ async function handleUpdateOperation({ keyPath, translations, validateStructure,
 /**
  * Handle batch operations
  */
-async function handleBatchOperations({ operations, validateStructure, createIfMissing, index }: any) {
+async function handleBatchOperations({ operations, validateStructure, createIfMissing, conflictResolution, index, config }: any) {
+  // Collect all key paths for validation
+  const allKeyPaths = operations.map((op: any) => op.keyPath);
+  
+  // Validate file conflicts before updating (if auto-sync is enabled)
+  if (config.autoSync && allKeyPaths.length > 0) {
+    try {
+      const conflicts = await validateFileConflicts(allKeyPaths, config, index, conflictResolution);
+      if (conflicts.length > 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              operation: 'batch-update',
+              success: false,
+              error: 'File structure conflicts detected',
+              conflicts: conflicts,
+              message: 'Some translation keys would conflict with existing file structure. Please resolve these conflicts first.',
+              processed: 0,
+              failed: operations.length
+            }, null, 2)
+          }]
+        };
+      }
+    } catch (validationError) {
+      console.error('File conflict validation failed:', validationError);
+    }
+  }
   const batchOps = operations.flatMap((op: any) => 
     Object.entries(op.translations).map(([language, value]) => ({
       type: (op.operation || 'set') === 'add' ? 'set' : 'set',

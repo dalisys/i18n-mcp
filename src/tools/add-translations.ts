@@ -4,16 +4,64 @@
 
 import { z } from 'zod';
 import { TranslationIndex } from '../core/translation-index.js';
+import { validateFileConflicts, collectNestedKeyPaths } from '../utils/file-validation.js';
+
+/**
+ * Smart namespace detection - checks if keys already contain the namespace prefix
+ */
+function detectNamespaceUsage(translations: any, namespace?: string): { 
+  hasNamespaceInKeys: boolean; 
+  effectiveBaseKeyPath: string;
+  conflictingKeys: string[];
+} {
+  if (!namespace) {
+    return { hasNamespaceInKeys: false, effectiveBaseKeyPath: '', conflictingKeys: [] };
+  }
+
+  const conflictingKeys: string[] = [];
+  let keysWithNamespace = 0;
+  let keysWithoutNamespace = 0;
+  const allKeys: string[] = [];
+
+  // Collect all keys from all languages
+  for (const [language, value] of Object.entries(translations)) {
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      collectNestedKeyPaths('', value, allKeys);
+    }
+  }
+
+  // Check if keys already contain the namespace
+  for (const key of allKeys) {
+    if (key.startsWith(namespace + '.')) {
+      keysWithNamespace++;
+    } else {
+      keysWithoutNamespace++;
+    }
+  }
+
+  // Detect conflicts
+  if (keysWithNamespace > 0 && keysWithoutNamespace > 0) {
+    // Mixed usage - some keys have namespace, some don't
+    for (const key of allKeys) {
+      if (!key.startsWith(namespace + '.')) {
+        conflictingKeys.push(key);
+      }
+    }
+  }
+
+  const hasNamespaceInKeys = keysWithNamespace > 0;
+  const effectiveBaseKeyPath = hasNamespaceInKeys ? '' : namespace;
+
+  return { hasNamespaceInKeys, effectiveBaseKeyPath, conflictingKeys };
+}
 
 /**
  * Setup the add translation tool
  */
-export function setupAddTranslationsTool(server: any, index: TranslationIndex, config: any) {
-  // Removed plain text debug log to avoid JSON parsing errors
-  
+export function setupAddTranslationsTool(server: any, index: TranslationIndex, config: any, refreshFromFiles?: () => Promise<void>) {
   server.tool(
     'add_translations',
-    'Add new translations with smart key generation and conflict handling',
+    'Add new translations with smart key generation and conflict handling. IMPORTANT: If using namespace, provide RELATIVE keys only (e.g., "active", "title") - do NOT include the namespace in the keys themselves.',
     {
       keyPath: z.string().optional().describe('Translation key path (optional if text provided)'),
       translations: z.record(z.string(), z.any()).describe('Translations by language code'),
@@ -21,12 +69,17 @@ export function setupAddTranslationsTool(server: any, index: TranslationIndex, c
       suggestedKey: z.string().optional().describe('Suggested key path'),
       conflictResolution: z.enum(['error', 'merge', 'replace']).default('error').describe('How to handle existing keys'),
       validateStructure: z.boolean().default(true).describe('Validate structure consistency'),
-      namespace: z.string().optional().describe('Namespace for organization (e.g., "dashboard.clients" for client-related translations)')
+      namespace: z.string().optional().describe('Namespace prefix (e.g., "dashboard.clients"). Keys must be RELATIVE to this namespace - do NOT include the namespace in the key names.')
     },
     async (args: any) => {
       // Removed plain text debug logs to avoid JSON parsing errors
       
       try {
+        // Ensure memory is current with files before making changes
+        if (refreshFromFiles) {
+          await refreshFromFiles();
+        }
+
         return await handleAddOperation({
           ...args,
           index,
@@ -65,8 +118,78 @@ async function handleAddOperation({
 
   if (isNested) {
     const results: any[] = [];
-    // For nested adds, the base key path comes from the namespace or the top-level key.
-    const baseKeyPath = namespace || keyPath || '';
+    
+    // Smart namespace detection to avoid duplicate namespacing
+    const namespaceAnalysis = detectNamespaceUsage(translations, namespace);
+    
+    // Report conflicting key usage if detected
+    if (namespaceAnalysis.conflictingKeys.length > 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            operation: 'add-nested',
+            success: false,
+            error: 'Incorrect namespace usage',
+            details: `You provided namespace: "${namespace}" but your keys already include the full path`,
+            conflictingKeys: namespaceAnalysis.conflictingKeys,
+            correctUsage: `EITHER use namespace + relative keys OR use full key paths without namespace`,
+            examples: {
+              correct1: 'namespace: "website.editor.hero" + keys: ["active", "title", "description"]',
+              correct2: 'no namespace + keys: ["website.editor.hero.active", "website.editor.hero.title"]',
+              incorrect: 'namespace: "website.editor.hero" + keys: ["website.editor.hero.active"] ← WRONG!'
+            },
+            analysis: {
+              namespace: namespace,
+              hasNamespaceInKeys: namespaceAnalysis.hasNamespaceInKeys,
+              keysWithoutNamespace: namespaceAnalysis.conflictingKeys.length
+            }
+          }, null, 2)
+        }]
+      };
+    }
+    
+    // Use effective base key path (empty if keys already contain namespace)
+    const baseKeyPath = namespaceAnalysis.effectiveBaseKeyPath;
+    
+    // First, collect all key paths that would be added (for validation)
+    const allKeyPaths: string[] = [];
+    for (const [language, value] of Object.entries(translations)) {
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        collectNestedKeyPaths(baseKeyPath, value, allKeyPaths);
+      }
+    }
+    
+    // Validate file conflicts before adding anything (if auto-sync is enabled)
+    if (config.autoSync && allKeyPaths.length > 0) {
+      try {
+        const conflicts = await validateFileConflicts(allKeyPaths, config, index, conflictResolution);
+        if (conflicts.length > 0) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                operation: 'add-nested',
+                success: false,
+                error: 'File structure conflicts detected',
+                conflicts: conflicts,
+                message: 'The new translation keys would conflict with existing file structure. Please resolve these conflicts first.',
+                summary: {
+                  keys_processed: 0,
+                  successful: 0,
+                  failed: allKeyPaths.length
+                }
+              }, null, 2)
+            }]
+          };
+        }
+      } catch (validationError) {
+        // If validation fails, proceed but warn
+        console.error('File conflict validation failed:', validationError);
+      }
+    }
+    
+    // If no conflicts, proceed with adding translations
     for (const [language, value] of Object.entries(translations)) {
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         await addNestedTranslations(baseKeyPath, value, language, index, results, conflictResolution);
@@ -90,6 +213,14 @@ async function handleAddOperation({
                     keys_processed: results.length,
                     successful: successfulOps.length,
                     failed: failedOps.length,
+                },
+                namespaceHandling: {
+                    provided: namespace,
+                    detected: namespaceAnalysis.hasNamespaceInKeys ? 'Keys already contain namespace' : 'Keys are relative to namespace',
+                    effectiveBasePath: baseKeyPath || '(root)',
+                    warning: namespaceAnalysis.hasNamespaceInKeys && namespace ? 
+                        'WARNING: You provided a namespace but your keys already include full paths. Consider using relative keys for cleaner organization.' : 
+                        undefined
                 },
                 results
             }, null, 2)
@@ -179,6 +310,36 @@ async function handleAddOperation({
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
       });
+    }
+  }
+
+  // Validate file conflicts before reporting success (if auto-sync is enabled)
+  if (config.autoSync) {
+    try {
+      const conflicts = await validateFileConflicts([finalKeyPath], config, index, conflictResolution);
+      if (conflicts.length > 0) {
+        // Remove the translations we just added since they'll cause sync conflicts
+        for (const [language] of Object.entries(translations)) {
+          index.delete(finalKeyPath, language);
+        }
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              operation: 'add',
+              success: false,
+              error: 'File structure conflicts detected',
+              conflicts: conflicts,
+              keyPath: finalKeyPath,
+              message: 'The new translation keys would conflict with existing file structure. Please resolve these conflicts first.'
+            }, null, 2)
+          }]
+        };
+      }
+    } catch (validationError) {
+      // If validation fails, proceed but warn
+      console.error('File conflict validation failed:', validationError);
     }
   }
 

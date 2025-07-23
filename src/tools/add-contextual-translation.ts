@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { TranslationIndex } from '../core/translation-index.js';
+import { validateFileConflicts } from '../utils/file-validation.js';
 
 /**
  * Setup the add contextual translation tool
@@ -120,6 +121,31 @@ async function handleContextualAddOperation({ text, context, translations, keyPa
           }, null, 2)
         }]
       };
+    }
+  }
+
+  // Validate file conflicts before adding (if auto-sync is enabled)
+  if (config.autoSync) {
+    try {
+      const conflicts = await validateFileConflicts([finalKey], config, index, conflictResolution);
+      if (conflicts.length > 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              operation: 'contextual-add',
+              success: false,
+              error: 'File structure conflicts detected',
+              conflicts: conflicts,
+              keyPath: finalKey,
+              message: 'The new translation key would conflict with existing file structure. Please resolve these conflicts first.'
+            }, null, 2)
+          }]
+        };
+      }
+    } catch (validationError) {
+      // If validation fails, proceed but warn
+      console.error('File conflict validation failed:', validationError);
     }
   }
 
