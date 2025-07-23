@@ -4,6 +4,80 @@
 
 import { z } from 'zod';
 import { TranslationIndex } from '../core/translation-index.js';
+import { promises as fs } from 'fs';
+import { join } from 'path';
+import { parseTree, type JSONPath } from 'jsonc-parser';
+
+/**
+ * Check if key paths have potential file conflicts
+ */
+async function checkForConflicts(keyPaths: string[], config: any, index: TranslationIndex): Promise<string[]> {
+  const conflicts: string[] = [];
+  const languages = index.getLanguages();
+  
+  // Only check a sample to avoid performance issues
+  const checkLanguages = languages.slice(0, 2);
+  
+  for (const language of checkLanguages) {
+    const filePath = join(config.translationDir, `${language}.json`);
+    let fileContent = '{}';
+    
+    try {
+      fileContent = await fs.readFile(filePath, 'utf-8');
+    } catch (error) {
+      continue;
+    }
+    
+    try {
+      const currentData = parseTree(fileContent);
+      
+      for (const keyPath of keyPaths.slice(0, 10)) { // Only check first 10 keys
+        const keyParts = keyPath.split('.') as JSONPath;
+        const conflictPath = findConflictingPath(currentData, keyParts);
+        if (conflictPath) {
+          conflicts.push(`${keyPath}`);
+        }
+      }
+    } catch (parseError) {
+      continue;
+    }
+  }
+  
+  return [...new Set(conflicts)];
+}
+
+function findConflictingPath(parseTree: any, keyParts: JSONPath): string[] | null {
+  let current = parseTree;
+  const conflictPath: string[] = [];
+  
+  for (const part of keyParts) {
+    const partStr = String(part);
+    
+    if (!current || current.type !== 'object') {
+      return conflictPath;
+    }
+    
+    const property = current.children?.find((child: any) => 
+      child.type === 'property' && 
+      child.children?.[0]?.value === partStr
+    );
+    
+    if (!property) {
+      return null;
+    }
+    
+    conflictPath.push(partStr);
+    const valueNode = property.children?.[1];
+    
+    if (valueNode?.type === 'string' || valueNode?.type === 'number' || valueNode?.type === 'boolean') {
+      return conflictPath;
+    }
+    
+    current = valueNode;
+  }
+  
+  return null;
+}
 
 /**
  * Format translations in a compact way to save context
@@ -109,6 +183,20 @@ export function setupSearchTranslationTool(server: any, index: TranslationIndex,
           resultsByQuery[searchQuery] = formattedResults;
         }
 
+        // Check for potential file structure conflicts
+        let conflictWarning = '';
+        if (_config.autoSync && allResults.length > 0) {
+          try {
+            const keyPaths = allResults.map(r => r.keyPath);
+            const conflicts = await checkForConflicts(keyPaths, _config, index);
+            if (conflicts.length > 0) {
+              conflictWarning = `⚠️ Warning: ${conflicts.length} of these keys may have file structure conflicts that could prevent auto-sync. Keys: ${conflicts.slice(0, 3).join(', ')}${conflicts.length > 3 ? '...' : ''}`;
+            }
+          } catch (error) {
+            // Silently continue if conflict checking fails
+          }
+        }
+
         // Single query response
         if (!Array.isArray(query) && !isMultiWordDetected && !parsedFromString) {
           const singleResponse: any = {
@@ -123,6 +211,10 @@ export function setupSearchTranslationTool(server: any, index: TranslationIndex,
             singleResponse.note = `Found ${allResults.length} results. Showing first 10 to save context.`;
             singleResponse.results = allResults.slice(0, 10);
             singleResponse.remainingCount = allResults.length - 10;
+          }
+
+          if (conflictWarning) {
+            singleResponse.conflictWarning = conflictWarning;
           }
 
           return {
@@ -172,6 +264,10 @@ export function setupSearchTranslationTool(server: any, index: TranslationIndex,
           response.suggestion = allResults.length === 0 
             ? 'Try using explore_translation_structure to understand the key hierarchy first.'
             : 'Consider searching for more specific single terms based on the structure you need.';
+        }
+
+        if (conflictWarning) {
+          response.conflictWarning = conflictWarning;
         }
 
         return {
