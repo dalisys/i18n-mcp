@@ -29,6 +29,7 @@ export class TranslationMCPServer {
   };
   private autoSyncTimeout: NodeJS.Timeout | null = null;
   private isRefreshing = false;
+  private static globalHandlersInstalled = false;
 
   constructor(config: ServerConfig) {
     // Removed plain text debug logs to avoid JSON parsing errors
@@ -127,6 +128,7 @@ export class TranslationMCPServer {
       }
     });
 
+    this.setupGlobalErrorHandlers();
     this.setupTools();
     this.setupEventHandlers();
 
@@ -136,9 +138,53 @@ export class TranslationMCPServer {
         method: "notification",
         params: {
           type: "info",
-          message: `TranslationMCPServer initialized: ${this.config.name} v${this.config.version}`
+          message: `TranslationMCPServer initialized: ${this.config.name} v${this.config.version}` 
         }
       }));
+    }
+  }
+
+
+  /**
+   * Setup global error handlers to prevent unexpected exits
+   */
+  private setupGlobalErrorHandlers(): void {
+    // Only install global handlers once to prevent listener leaks
+    if (TranslationMCPServer.globalHandlersInstalled) {
+      if (this.config.debug) {
+        console.error('🛡️  Global error handlers already installed, skipping');
+      }
+      return;
+    }
+
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error: Error) => {
+      console.error('🚨 UNCAUGHT EXCEPTION - MCP Server will attempt to continue:');
+      console.error('Error:', error.message);
+      console.error('Stack:', error.stack);
+      console.error('This indicates a programming error that should be fixed.');
+    });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+      console.error('🚨 UNHANDLED PROMISE REJECTION - MCP Server will attempt to continue:');
+      console.error('Reason:', reason);
+      console.error('Promise:', promise);
+      if (reason instanceof Error) {
+        console.error('Stack:', reason.stack);
+      }
+      console.error('This indicates a missing .catch() or async/await error handling.');
+    });
+
+    // Handle process warnings
+    process.on('warning', (warning: Error) => {
+      console.error('⚠️  Process Warning:', warning.name, warning.message);
+    });
+
+    TranslationMCPServer.globalHandlersInstalled = true;
+
+    if (this.config.debug) {
+      console.error('🛡️  Global error handlers installed');
     }
   }
 
@@ -179,9 +225,10 @@ export class TranslationMCPServer {
    * Setup event handlers for index and file watcher
    */
   private setupEventHandlers(): void {
-    // Index events
+    // Index events - only log during tool operations, not file loading
     this.index.on('set', (event) => {
-      if (this.config.debug) {
+      // Only log individual sets if it's a small operation (likely from a tool)
+      if (this.config.debug && !this.isRefreshing) {
         console.info(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
@@ -308,41 +355,51 @@ export class TranslationMCPServer {
       // Get all languages to sync
       const languages = this.index.getLanguages();
       const allKeys = this.index.getKeys();
-      
-      if (languages.length === 0) {
-        return;
-      }
+      let successCount = 0;
+      let errorCount = 0;
       
       for (const language of languages) {
         try {
           await this.syncLanguageToFile(language, allKeys);
-        } catch (syncError) {
+          successCount++;
+        } catch (error) {
+          errorCount++;
           console.error(JSON.stringify({
             jsonrpc: "2.0",
             method: "notification",
             params: {
               type: "error",
-              message: `Failed to sync language ${language}`,
+              message: `⚠️  Auto-sync failed for ${language}.json:`,
               error: {
-                name: syncError instanceof Error ? syncError.name : 'Unknown',
-                message: syncError instanceof Error ? syncError.message : String(syncError),
+                name: error instanceof Error ? error.name : 'Unknown',
+                message: error instanceof Error ? error.message : String(error),
                 language: language
               }
             }
           }));
-          throw syncError; // Re-throw to trigger outer catch
         }
       }
 
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        if (errorCount === 0) {
+          console.info(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
             type: "info",
-            message: `Auto-sync completed for ${languages.length} language(s)`
+            message: `Auto-sync completed for ${successCount} language(s)`
           }
         }));
+        } else {
+          console.error(JSON.stringify({
+            jsonrpc: "2.0",
+            method: "notification",
+            params: {
+              type: "error",
+              message: `⚠️  Auto-sync completed with issues: ${successCount} succeeded, ${errorCount} failed`
+            }
+          }));
+        }
       }
     } catch (error) {
       console.error(JSON.stringify({
@@ -402,6 +459,29 @@ export class TranslationMCPServer {
     let changesMade = 0;
     let newFileContent = fileContent;
 
+    // Pre-validate all keys for conflicts before making any changes
+    const conflicts: string[] = [];
+    const currentData = parseTree(newFileContent);
+    
+    for (const keyPath of languageKeys) {
+      const entry = this.index.get(keyPath, language);
+      if (entry && typeof entry === 'object' && 'value' in entry) {
+        const keyParts = keyPath.split('.') as JSONPath;
+        const conflictPath = this.findConflictingPath(currentData, keyParts);
+        if (conflictPath) {
+          conflicts.push(`${keyPath} conflicts with existing string value at: ${conflictPath.join('.')}`);
+        }
+      }
+    }
+    
+    // If there are conflicts, log error and skip this language file
+    if (conflicts.length > 0) {
+      const errorMessage = `Cannot sync ${language}.json due to path conflicts:\n${conflicts.join('\n')}`;
+      console.error(`⚠️  Auto-sync skipped for ${language}.json:`, errorMessage);
+      return; // Skip this language file but continue with others
+    }
+    
+    // If no conflicts, proceed with the sync
     for (const keyPath of languageKeys) {
       const entry = this.index.get(keyPath, language);
       if (entry && typeof entry === 'object' && 'value' in entry) {
@@ -453,6 +533,48 @@ export class TranslationMCPServer {
         }));
       }
     }
+  }
+
+
+
+  /**
+   * Find the conflicting path when trying to add nested keys to a string parent
+   */
+  private findConflictingPath(parseTree: any, keyParts: JSONPath): string[] | null {
+    let current = parseTree;
+    const conflictPath: string[] = [];
+    
+    for (const part of keyParts) {
+      const partStr = String(part);
+      
+      if (!current || current.type !== 'object') {
+        // Found a non-object where we expected to traverse deeper
+        return conflictPath;
+      }
+      
+      // Look for the property in the current object
+      const property = current.children?.find((child: any) => 
+        child.type === 'property' && 
+        child.children?.[0]?.value === partStr
+      );
+      
+      if (!property) {
+        // Property doesn't exist, so no conflict
+        return null;
+      }
+      
+      conflictPath.push(partStr);
+      const valueNode = property.children?.[1];
+      
+      if (valueNode?.type === 'string' || valueNode?.type === 'number' || valueNode?.type === 'boolean') {
+        // Found a primitive value where we need to add more nested keys
+        return conflictPath;
+      }
+      
+      current = valueNode;
+    }
+    
+    return null;
   }
 
   /**
@@ -652,7 +774,9 @@ export class TranslationMCPServer {
           }
         }));
       }
+      
       await this.fileWatcher.refreshIndexFromFiles();
+      
       if (this.config.debug) {
         console.info(JSON.stringify({
           jsonrpc: "2.0",
@@ -671,6 +795,12 @@ export class TranslationMCPServer {
           }
         }));
       }
+    } catch (error) {
+      console.error('❌ Failed to refresh translation index from files:', error instanceof Error ? error.message : String(error));
+      if (error instanceof Error && error.stack) {
+        console.error('Stack trace:', error.stack);
+      }
+      // Don't re-throw, allow tools to continue with current memory state
     } finally {
       this.isRefreshing = false;
     }
