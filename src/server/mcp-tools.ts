@@ -45,10 +45,47 @@ export class MCPTools {
   registerTools(server: any): void {
     const refreshedTool = (name: string, description: string, schema: any, handler: any) => {
         const wrappedHandler = async (args: any) => {
-            if (this.refresh) {
-                await this.refresh();
+            try {
+                if (this.config.debug) {
+                    console.error(`🔧 Tool "${name}" called with args:`, JSON.stringify(args, null, 2));
+                }
+                
+                if (this.refresh) {
+                    if (this.config.debug) {
+                        console.error(`🔄 Refreshing memory for tool "${name}"`);
+                    }
+                    await this.refresh();
+                }
+                
+                if (this.config.debug) {
+                    console.error(`▶️  Executing tool "${name}"`);
+                }
+                
+                const result = await handler(args);
+                
+                if (this.config.debug) {
+                    console.error(`✅ Tool "${name}" completed successfully`);
+                }
+                
+                return result;
+            } catch (error) {
+                console.error(`❌ Tool "${name}" failed with error:`, error instanceof Error ? error.message : String(error));
+                if (error instanceof Error && error.stack) {
+                    console.error('Stack trace:', error.stack);
+                }
+                
+                // Return error response instead of throwing
+                return {
+                    content: [{
+                        type: 'text',
+                        text: JSON.stringify({
+                            error: `Tool "${name}" execution failed`,
+                            details: error instanceof Error ? error.message : String(error),
+                            timestamp: new Date().toISOString()
+                        }, null, 2)
+                    }]
+                };
             }
-            return handler(args);
         };
         server.tool(name, description, schema, wrappedHandler);
     };
@@ -56,21 +93,21 @@ export class MCPTools {
     const refreshedServer = { ...server, tool: refreshedTool };
 
     // Search tools (read-only)
-    setupSearchTranslationTool(refreshedServer, this.index, this.config);
-    setupGetTranslationSuggestionsTool(refreshedServer, this.index, this.config);
-    setupGetTranslationContextTool(refreshedServer, this.index, this.config);
-    setupExploreTranslationStructureTool(refreshedServer, this.index, this.config);
+    setupSearchTranslationTool(server, this.index, this.config, this.refresh);
+    setupGetTranslationSuggestionsTool(server, this.index, this.config, this.refresh);
+    setupGetTranslationContextTool(server, this.index, this.config, this.refresh);
+    setupExploreTranslationStructureTool(server, this.index, this.config, this.refresh);
     
     // Translation management tools (read-write)
-    setupAddTranslationsTool(refreshedServer, this.index, this.config);
-    setupAddContextualTranslationTool(refreshedServer, this.index, this.config);
-    setupUpdateTranslationTool(refreshedServer, this.index, this.config);
+    setupAddTranslationsTool(refreshedServer, this.index, this.config, this.refresh);
+    setupAddContextualTranslationTool(refreshedServer, this.index, this.config, this.refresh);
+    setupUpdateTranslationTool(refreshedServer, this.index, this.config, this.refresh);
     
     // Code analysis tools (mixed)
-    setupAnalyzeCodebaseTool(refreshedServer, this.index, this.config); // read-only
-    setupSearchMissingTranslationsTool(refreshedServer, this.index, this.config); // read-only
-    setupExtractToTranslationTool(refreshedServer, this.index, this.config); // read-write
-    setupCleanupUnusedTranslationsTool(refreshedServer, this.index, this.config); // read-write
+    setupAnalyzeCodebaseTool(server, this.index, this.config); // read-only
+    setupSearchMissingTranslationsTool(server, this.index, this.config); // read-only
+    setupExtractToTranslationTool(refreshedServer, this.index, this.config, this.refresh); // read-write
+    setupCleanupUnusedTranslationsTool(refreshedServer, this.index, this.config, this.refresh); // read-write
     
     // File management tools (mixed)
     setupValidateStructureTool(refreshedServer, this.index, this.config); // read-write
@@ -78,9 +115,8 @@ export class MCPTools {
     setupReorganizeTranslationFilesTool(refreshedServer, this.index, this.config); // read-write
 
     // Additional tools (mixed)
-    setupDeleteTranslationsTool(refreshedServer, this.index, this.config); // read-write
-    setupGenerateTypesTool(refreshedServer, this.index, this.config); // read-only
-    
+    setupDeleteTranslationsTool(refreshedServer, this.index, this.config, this.refresh); // read-write
+    setupGenerateTypesTool(server, this.index, this.config); // read-only
     
     // Get server statistics tool
     refreshedServer.tool(
