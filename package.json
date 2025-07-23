@@ -1,6 +1,6 @@
 {
   "name": "i18n-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "High-performance MCP server for managing internationalization (i18n) translation files",
   "main": "dist/index.js",
   "type": "module",
