@@ -124,7 +124,6 @@ export class TranslationMCPServer {
       capabilities: {
         tools: {},
         resources: {},
-        prompts: {}
       }
     });
 
