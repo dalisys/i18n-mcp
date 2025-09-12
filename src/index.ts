@@ -173,15 +173,40 @@ function loadEnvConfig(): Partial<ServerConfig> {
  */
 async function main(): Promise<void> {
   try {
-    // Removed plain text debug log to avoid JSON parsing errors
-    
+    // Set up proper error handling for MCP
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error(JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notification",
+        params: {
+          type: "error",
+          message: "Unhandled promise rejection",
+          error: reason
+        }
+      }));
+      process.exit(1);
+    });
+
+    process.on('uncaughtException', (error) => {
+      console.error(JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notification",
+        params: {
+          type: "error",
+          message: "Fatal error",
+          error: error.message
+        }
+      }));
+      process.exit(1);
+    });
+
     // Merge environment and argument configuration
     const envConfig = loadEnvConfig();
     const argsConfig = parseArgs();
     
     const config: ServerConfig = {
       name: 'i18n-mcp',
-      version: '1.0.0',
+      version: '1.0.9',
       translationDir: './locales',
       baseLanguage: 'en',
       debug: false,
@@ -191,16 +216,17 @@ async function main(): Promise<void> {
 
     // Validate required translationDir
     if (!config.translationDir) {
-      console.warn(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
-          type: "warning",
+          type: "error",
           message: 'Error: Translation directory is required. Use --dir or I18N_MCP_DIR'
         }
       }));
       process.exit(1);
     }
+
 
     // Create and start server
     const server = new TranslationMCPServer(config);
@@ -213,35 +239,47 @@ async function main(): Promise<void> {
       params: {
         type: "error",
         message: 'Failed to start server',
-        error: error
+        error: error instanceof Error ? error.message : String(error)
       }
     }));
     process.exit(1);
   }
-
-  process.on('uncaughtException', (error) => {
-    console.error(JSON.stringify({
-      jsonrpc: "2.0",
-      method: "notification",
-      params: {
-        type: "error",
-        message: "Fatal error",
-        error: error
-      }
-    }));
-    process.exit(1);
-  });
 }
 
-// Run when executed directly
-let isMainModule = false;
-if (process.argv[1]) {
-  const resolvedPath = resolve(process.argv[1]);
-  const currentModulePath = fileURLToPath(import.meta.url);
-  isMainModule = currentModulePath === resolvedPath;
+// Run when executed directly 
+// More robust detection that works with npx and other execution contexts
+function isMainModule(): boolean {
+  // If no argv[1], we're likely being called directly
+  if (!process.argv[1]) return true;
+  
+  try {
+    const resolvedPath = resolve(process.argv[1]);
+    const currentModulePath = fileURLToPath(import.meta.url);
+    
+    // Direct path comparison
+    if (currentModulePath === resolvedPath) return true;
+    
+    // Check if we're being run as an executable (npm/npx scenario)
+    // In this case, argv[1] often points to a symlink or temporary path
+    if (resolvedPath.includes('node_modules') || resolvedPath.includes('.npm') || resolvedPath.includes('npx')) {
+      return true;
+    }
+    
+    // Check if the basename matches and we're in a node_modules context
+    const currentBasename = currentModulePath.split('/').pop();
+    const resolvedBasename = resolvedPath.split('/').pop();
+    if (currentBasename === resolvedBasename && resolvedPath.includes('node_modules')) {
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    // If path resolution fails, assume we're the main module
+    return true;
+  }
 }
 
-if (isMainModule) {
+if (isMainModule()) {
   main().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);

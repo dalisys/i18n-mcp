@@ -148,7 +148,7 @@ export class TranslationFileWatcher extends EventEmitter {
       }
 
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -215,7 +215,7 @@ export class TranslationFileWatcher extends EventEmitter {
     this.watcher
       .on('add', (path: string) => {
         if (this.config.debug) {
-          console.info(JSON.stringify({
+          console.error(JSON.stringify({
             jsonrpc: "2.0",
             method: "notification",
             params: {
@@ -245,7 +245,7 @@ export class TranslationFileWatcher extends EventEmitter {
       })
       .on('change', (path: string) => {
         if (this.config.debug) {
-          console.info(JSON.stringify({
+          console.error(JSON.stringify({
             jsonrpc: "2.0",
             method: "notification",
             params: {
@@ -258,7 +258,7 @@ export class TranslationFileWatcher extends EventEmitter {
       })
       .on('unlink', (path: string) => {
         if (this.config.debug) {
-          console.info(JSON.stringify({
+          console.error(JSON.stringify({
             jsonrpc: "2.0",
             method: "notification",
             params: {
@@ -284,7 +284,7 @@ export class TranslationFileWatcher extends EventEmitter {
       .on('ready', () => {
         isInitialScanComplete = true;
         if (this.config.debug) {
-          console.info(JSON.stringify({
+          console.error(JSON.stringify({
             jsonrpc: "2.0",
             method: "notification",
             params: {
@@ -297,7 +297,7 @@ export class TranslationFileWatcher extends EventEmitter {
       });
 
     if (this.config.debug) {
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -318,7 +318,7 @@ export class TranslationFileWatcher extends EventEmitter {
       this.processedFiles.clear();
       
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {

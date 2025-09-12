@@ -69,7 +69,7 @@ export class TranslationMCPServer {
     } as Required<ServerConfig>;
 
     // Log final configuration
-    console.info(JSON.stringify({
+    console.error(JSON.stringify({
       jsonrpc: "2.0",
       method: "notification",
       params: {
@@ -139,7 +139,7 @@ export class TranslationMCPServer {
     this.eventHandler.setupEventHandlers();
 
     if (this.config.debug) {
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -174,7 +174,7 @@ export class TranslationMCPServer {
     mcpTools.registerTools(this.server);
 
     if (this.config.debug) {
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -222,7 +222,7 @@ export class TranslationMCPServer {
   async refreshFromFiles(): Promise<void> {
     if (this.isRefreshing) {
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -238,7 +238,7 @@ export class TranslationMCPServer {
     this.eventHandler.setRefreshing(true);
     try {
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -251,7 +251,7 @@ export class TranslationMCPServer {
       await this.fileWatcher.refreshIndexFromFiles();
       
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -259,7 +259,7 @@ export class TranslationMCPServer {
             message: 'Translation index refreshed from files'
           }
         }));
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {

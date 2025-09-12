@@ -89,7 +89,7 @@ export class AutoSyncManager {
 
       if (this.config.debug) {
         if (errorCount === 0) {
-          console.info(JSON.stringify({
+          console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -230,7 +230,7 @@ export class AutoSyncManager {
       await fs.writeFile(filePath, newFileContent, 'utf-8');
 
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -300,7 +300,7 @@ export class AutoSyncManager {
       clearTimeout(this.autoSyncTimeout);
       this.autoSyncTimeout = null;
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {

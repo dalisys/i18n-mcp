@@ -24,14 +24,16 @@ export class ServerLifecycleManager {
    */
   async start(): Promise<void> {
     try {
-      // Initialize file watcher first
-      await this.fileWatcher.start();
-      
-      // Connect to STDIO transport
+
       const stdioTransport = new StdioServerTransport();
       await this.server.connect(stdioTransport);
       
-      console.info(JSON.stringify({
+      console.error("i18n MCP Server running on stdio");
+      
+      // Initialize file watcher AFTER MCP connection
+      await this.fileWatcher.start();
+      
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -40,7 +42,7 @@ export class ServerLifecycleManager {
         }
       }));
 
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -49,7 +51,7 @@ export class ServerLifecycleManager {
         }
       }));
 
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -64,36 +66,58 @@ export class ServerLifecycleManager {
       // Log additional IDE integration features
       this.logAdditionalFeatures();
 
-      // Keep process alive until connection is closed
-      return new Promise<void>((resolve) => {
-        stdioTransport.onclose = () => {
-          resolve();
-        };
-        
-        // Also handle process signals for graceful shutdown
-        process.on('SIGINT', () => {
-          console.info(JSON.stringify({
+      // Keep the process alive by preventing the event loop from exiting
+      // This is essential for MCP servers to stay running
+      const keepAlive = setInterval(() => {
+      }, 30000);
+
+      // Handle process termination signals to cleanup
+      const cleanup = () => {
+        clearInterval(keepAlive);
+        if (this.config.debug) {
+          console.error(JSON.stringify({
             jsonrpc: "2.0",
             method: "notification",
             params: {
               type: "info",
-              message: 'MCP server shutting down...'
+              message: "Server shutting down"
             }
           }));
-          resolve();
-        });
-        
-        process.on('SIGTERM', () => {
-          console.info(JSON.stringify({
+        }
+      };
+
+      process.on('SIGINT', cleanup);
+      process.on('SIGTERM', cleanup);
+      process.on('exit', cleanup);
+
+      // Also handle stdin close which happens when MCP client disconnects
+      process.stdin.on('end', () => {
+        if (this.config.debug) {
+          console.error(JSON.stringify({
             jsonrpc: "2.0",
             method: "notification",
             params: {
               type: "info",
-              message: 'MCP server shutting down...'
+              message: "STDIN closed, shutting down server"
             }
           }));
-          resolve();
-        });
+        }
+        cleanup();
+        process.exit(0);
+      });
+
+      process.stdin.on('error', (error) => {
+        console.error(JSON.stringify({
+          jsonrpc: "2.0",
+          method: "notification",
+          params: {
+            type: "error",
+            message: "STDIN error",
+            error: error.message
+          }
+        }));
+        cleanup();
+        process.exit(1);
       });
       
     } catch (error) {
@@ -121,7 +145,7 @@ export class ServerLifecycleManager {
     await this.fileWatcher.stop();
     
     if (this.config.debug) {
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -156,7 +180,7 @@ export class ServerLifecycleManager {
           baseLanguage: this.config.baseLanguage
         });
 
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -183,7 +207,7 @@ export class ServerLifecycleManager {
    */
   private logAdditionalFeatures(): void {
     if (this.config.srcDir) {
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -194,7 +218,7 @@ export class ServerLifecycleManager {
     }
     
     if (this.config.frameworks.length > 0) {
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {
@@ -205,7 +229,7 @@ export class ServerLifecycleManager {
     }
     
     if (this.config.autoSync) {
-      console.info(JSON.stringify({
+      console.error(JSON.stringify({
         jsonrpc: "2.0",
         method: "notification",
         params: {

@@ -20,7 +20,7 @@ export class FileProcessor {
       const parseResult = await JsonOperations.parseFile(filePath);
       
       if (debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -28,7 +28,7 @@ export class FileProcessor {
             message: `Processing ${language}: ${filePath}`
           }
         }));
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -42,7 +42,7 @@ export class FileProcessor {
       const clearedKeys = this.clearFileFromIndex(filePath, language, index);
       
       if (debug && clearedKeys > 0) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -61,7 +61,7 @@ export class FileProcessor {
       );
 
       if (debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {

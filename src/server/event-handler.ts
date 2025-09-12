@@ -31,7 +31,7 @@ export class EventHandler {
     this.index.on('set', (event) => {
       // Only log individual sets if it's a small operation (likely from a tool)
       if (this.config.debug && !this.isRefreshing) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -46,7 +46,7 @@ export class EventHandler {
 
     this.index.on('delete', (event) => {
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -65,7 +65,7 @@ export class EventHandler {
   private setupFileWatcherEvents(): void {
     this.fileWatcher.on('fileProcessed', (event) => {
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
@@ -94,7 +94,7 @@ export class EventHandler {
 
     this.fileWatcher.on('ready', () => {
       if (this.config.debug) {
-        console.info(JSON.stringify({
+        console.error(JSON.stringify({
           jsonrpc: "2.0",
           method: "notification",
           params: {
