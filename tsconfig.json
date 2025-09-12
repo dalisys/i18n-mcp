@@ -35,8 +35,7 @@
     /* Advanced */
     "resolveJsonModule": true,
     "allowImportingTsExtensions": false,
-    "noEmitOnError": true,
-    "preserveShebang": true
+    "noEmitOnError": true
   },
   "include": [
     "src/**/*"
