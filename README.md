@@ -40,6 +40,12 @@ The server provides a comprehensive suite of tools for managing translations, ca
 
 ## Quick Start
 
+Use via npx (no clone needed):
+
+```bash
+npx -y i18n-mcp --dir ./locales --project-root /path/to/your/project
+```
+
 Clone and build the project:
 
 ```bash
@@ -61,9 +67,9 @@ Add to your Claude Desktop configuration:
 {
   "mcpServers": {
     "i18n": {
-        "command": "node",
-        "args": ["/path/to/i18n-mcp/dist/index.js", "--dir", "/User/project/locales"]
-      }
+      "command": "npx", // or "C:\\path\\to\\nvm\\node.exe" or mac "/Users/userName/.volta/bin/npx"
+      "args": ["-y", "i18n-mcp", "--dir", "/User/project/locales", "--project-root", "/User/project"]
+    }
   }
 }
 ```
@@ -74,13 +80,17 @@ Add to your Claude Desktop configuration:
 {
   "mcpServers": {
     "i18n": {
-      "command": "C:\\path\\to\\node.exe", // or "C:\\path\\to\\nvm\\node.exe"
+      "command": "npx",
       "args": [
-        "D:\\i18n-mcp\\dist\\index.js",
+        "-y",
+        "i18n-mcp",
         "--dir",
-        "D:\\path\\to_your_project\\locales"
+        "D:\\path\\to_your_project\\locales",
+        "--project-root",
+        "D:\\path\\to_your_project"
       ]
     }
+  }
 }
 ```
 
@@ -90,9 +100,10 @@ Add to your Claude Desktop configuration:
 {
   "mcpServers": {
     "i18n": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "/path/to/i18n-mcp/dist/index.js",
+        "-y",
+        "i18n-mcp",
         "--dir", "./locales",
         "--base-language", "en",
         "--src-dir", "./src",
@@ -114,8 +125,8 @@ Add to your Claude Desktop configuration:
 {
   "mcpServers": {
     "i18n": {
-      "command": "node",
-      "args": ["/path/to/i18n-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "i18n-mcp"],
       "env": {
         "I18N_MCP_DIR": "./locales",
         "I18N_MCP_BASE_LANGUAGE": "en",
@@ -140,8 +151,8 @@ Add the following to your IDE (vscode, cursor):
 {
 
       "i18n": {
-        "command": "node",
-        "args": ["/path/to/i18n-mcp/dist/index.js", "--dir", "/User/project/locales"]
+        "command": "npx",
+        "args": ["-y", "i18n-mcp", "--dir", "/User/project/locales", "--project-root", "/User/project"]
       }
 
 }
@@ -154,8 +165,8 @@ Add to your Zed settings.json:
 ```json
 "context_servers": {
   "i18n": {
-    "command": "node",
-    "args": ["/path/to/i18n-mcp/dist/index.js", "--dir", "./locales"]
+    "command": "npx",
+    "args": ["-y", "i18n-mcp", "--dir", "./locales", "--project-root", "/path/to/your/project"]
   }
 }
 ```
@@ -251,7 +262,3 @@ npm test
 ```bash
 npm run build
 ```
-
-
-
-
